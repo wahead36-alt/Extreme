@@ -1,0 +1,206 @@
+# ======================================================
+# EXTREME SAFE CACHE CLEANER v5 (ULTIMATE EDITION)
+# ======================================================
+
+Write-Host "=== START EXTREME SYSTEM CLEAN ===" -ForegroundColor Cyan
+
+$Global:TotalFiles = 0
+$Global:TotalSize  = 0
+
+# ======================================================
+# 🧠 RAM STATUS (BEFORE)
+# ======================================================
+$ramBefore = Get-CimInstance Win32_OperatingSystem
+$ramTotalGB = [Math]::Round($ramBefore.TotalVisibleMemorySize / 1MB, 2)
+$ramFreeBeforeGB = [Math]::Round($ramBefore.FreePhysicalMemory / 1MB, 2)
+$ramUsedBeforeGB = [Math]::Round($ramTotalGB - $ramFreeBeforeGB, 2)
+
+Write-Host "`n=== RAM BEFORE ===" -ForegroundColor Cyan
+Write-Host "RAM Total : $ramTotalGB GB"
+Write-Host "RAM Used  : $ramUsedBeforeGB GB"
+Write-Host "RAM Free  : $ramFreeBeforeGB GB"
+
+# ======================================================
+# FUNCTION: Remove Files + Count
+# ======================================================
+function Remove-Files($path) {
+    if (Test-Path $path) {
+        try {
+            Get-ChildItem $path -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object {
+                if (-not $_.PSIsContainer) {
+                    $Global:TotalFiles++
+                    $Global:TotalSize += $_.Length
+                }
+            }
+            Remove-Item "$path\*" -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Host "CLEANED: $path" -ForegroundColor Green
+        } catch {
+            Write-Host "SKIPPED: $path" -ForegroundColor Yellow
+        }
+    }
+}
+
+# ======================================================
+# FUNCTION: Auto Scan Cache / Temp / Logs
+# ======================================================
+function Scan-And-Clean($basePath) {
+    if (Test-Path $basePath) {
+        Get-ChildItem $basePath -Directory -Recurse -Force -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.Name -match '(?i)cache|temp|logs' -and
+            $_.FullName -notmatch '(?i)userdata|content|projects|profiles|save'
+        } | ForEach-Object {
+            Remove-Files $_.FullName
+        }
+    }
+}
+
+# ======================================================
+# 🔹 WINDOWS / USER CACHE
+# ======================================================
+Remove-Files "$env:TEMP"
+Remove-Files "C:\Windows\Temp"
+Remove-Files "C:\Windows\Prefetch"
+Remove-Files "$env:LOCALAPPDATA\Temp"
+Remove-Files "$env:LOCALAPPDATA\Microsoft\Windows\INetCache"
+Remove-Files "$env:LOCALAPPDATA\Microsoft\Windows\Explorer"
+Remove-Files "$env:LOCALAPPDATA\CrashDumps"
+
+# ======================================================
+# 🔹 WINDOWS UPDATE CACHE
+# ======================================================
+Stop-Service wuauserv -Force -ErrorAction SilentlyContinue
+Remove-Files "C:\Windows\SoftwareDistribution\Download"
+Start-Service wuauserv -ErrorAction SilentlyContinue
+
+# ======================================================
+# 🔹 GPU SHADER CACHE
+# ======================================================
+Remove-Files "$env:LOCALAPPDATA\NVIDIA\DXCache"
+Remove-Files "$env:LOCALAPPDATA\NVIDIA\GLCache"
+Remove-Files "$env:LOCALAPPDATA\AMD\DxCache"
+Remove-Files "$env:LOCALAPPDATA\AMD\GLCache"
+Remove-Files "$env:LOCALAPPDATA\D3DSCache"
+
+# ======================================================
+# 🔹 BROWSER CACHE (DEEP)
+# ======================================================
+$chrome = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default"
+$edge   = "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default"
+
+Remove-Files "$chrome\Cache"
+Remove-Files "$chrome\Code Cache"
+Remove-Files "$chrome\GPUCache"
+Remove-Files "$chrome\Service Worker"
+Remove-Files "$chrome\Media Cache"
+
+Remove-Files "$edge\Cache"
+Remove-Files "$edge\Code Cache"
+Remove-Files "$edge\GPUCache"
+Remove-Files "$edge\Service Worker"
+Remove-Files "$edge\Media Cache"
+
+# ======================================================
+# 🔹 FiveM / Discord
+# ======================================================
+Remove-Files "$env:LOCALAPPDATA\FiveM\FiveM.app\data\cache"
+Remove-Files "$env:LOCALAPPDATA\FiveM\FiveM.app\data\server-cache"
+Remove-Files "$env:LOCALAPPDATA\FiveM\FiveM.app\data\server-cache-priv"
+
+Remove-Files "$env:APPDATA\discord\Cache"
+Remove-Files "$env:APPDATA\discord\Code Cache"
+Remove-Files "$env:APPDATA\discord\GPUCache"
+
+# ======================================================
+# 🔥 AUTO SCAN ALL PROGRAMS
+# ======================================================
+Scan-And-Clean "$env:LOCALAPPDATA"
+Scan-And-Clean "$env:APPDATA"
+
+# ======================================================
+# 🧠 หมวด 1: CLEAR DNS / NETWORK CACHE
+# ======================================================
+Write-Host "`n=== CLEAR DNS CACHE ===" -ForegroundColor Cyan
+ipconfig /flushdns | Out-Null
+
+# ======================================================
+# 🧠 หมวด 2: CLEAR STANDBY LIST (RAM แช่ค้าง)
+# ======================================================
+Write-Host "=== CLEAR STANDBY MEMORY ===" -ForegroundColor Cyan
+$null = (Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory
+
+# ======================================================
+# 🧠 หมวด 3: ICON / THUMBNAIL CACHE
+# ======================================================
+Write-Host "=== CLEAR ICON CACHE ===" -ForegroundColor Cyan
+Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
+Remove-Files "$env:LOCALAPPDATA\Microsoft\Windows\Explorer"
+Start-Process explorer.exe
+
+# ======================================================
+# 🧠 หมวด 4: RESTART RAM-HOG SERVICES
+# ======================================================
+Write-Host "=== RESTART SYSTEM SERVICES ===" -ForegroundColor Cyan
+Restart-Service SysMain -Force -ErrorAction SilentlyContinue
+
+# ======================================================
+# 🧠 หมวด 5: RAM WORKING SET TRIM
+# ======================================================
+Write-Host "=== TRIMMING RAM (WORKING SET) ===" -ForegroundColor Cyan
+Get-Process | Where-Object {
+    $_.WorkingSet64 -gt 150MB -and
+    $_.Name -notmatch 'System|Idle|svchost'
+} | ForEach-Object {
+    try {
+        $_.MinWorkingSet = 1
+        $_.MaxWorkingSet = 1
+    } catch {}
+}
+
+# ======================================================
+# 🧠 RAM STATUS (AFTER)
+# ======================================================
+$ramAfter = Get-CimInstance Win32_OperatingSystem
+$ramFreeAfterGB = [Math]::Round($ramAfter.FreePhysicalMemory / 1MB, 2)
+$ramUsedAfterGB = [Math]::Round($ramTotalGB - $ramFreeAfterGB, 2)
+$ramRecoveredGB = [Math]::Round($ramFreeAfterGB - $ramFreeBeforeGB, 2)
+
+# ======================================================
+# SUMMARY
+# ======================================================
+$sizeGB = [Math]::Round($Global:TotalSize / 1GB, 2)
+
+Write-Host "`n=== CLEANING COMPLETED ===" -ForegroundColor Cyan
+Write-Host "ลบไปทั้งหมด : $Global:TotalFiles ไฟล์"
+Write-Host "คืนพื้นที่   : $sizeGB GB"
+Write-Host "RAM คืนมา    : $ramRecoveredGB GB" -ForegroundColor Green
+Write-Host "แนะนำ Restart เครื่อง 1 รอบ" -ForegroundColor Yellow
+
+# ======================================================
+# 🔥 NEW: AUTO BACKGROUND PROCESS / SERVICE CLEAN (SAFE)
+# ======================================================
+Write-Host "`n=== AUTO BACKGROUND CLEAN (SAFE MODE) ===" -ForegroundColor Cyan
+
+$WhiteList = @(
+ "System","Idle","svchost","winlogon","wininit","csrss","services",
+ "lsass","explorer","taskmgr","WUDFHost","WmiPrvSE","taskhostw",
+ "TextInputHost","SearchIndexer","RuntimeBroker"
+)
+
+$Killed = 0
+
+Get-Process | Where-Object {
+    $_.Path -and
+    $_.Path -notmatch "C:\\Windows" -and
+    $WhiteList -notcontains $_.Name -and
+    $_.WorkingSet64 -gt 100MB
+} | ForEach-Object {
+    try {
+        Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+        Write-Host "KILLED: $($_.Name)" -ForegroundColor DarkRed
+        $Killed++
+    } catch {}
+}
+
+Write-Host "=== BACKGROUND CLEAN DONE ===" -ForegroundColor Green
+Write-Host "ปิดโปรเซสที่ไม่จำเป็น : $Killed ตัว" -ForegroundColor Yellow
